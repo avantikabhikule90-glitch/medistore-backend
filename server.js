@@ -13,10 +13,14 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
+// ─────────────────────────────────────────────
 // OTP Store
+// ─────────────────────────────────────────────
 const otpStore = new Map();
 
+// ─────────────────────────────────────────────
 // Rate Limiter
+// ─────────────────────────────────────────────
 const otpLimiter = rateLimit({
   windowMs: 5 * 60 * 1000,
   max: 10,
@@ -26,14 +30,17 @@ const otpLimiter = rateLimit({
   }
 });
 
-// Gmail Transporter
+// ─────────────────────────────────────────────
+// Gmail Transporter (FIXED)
+// ─────────────────────────────────────────────
 const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 465,
-  secure: true,
+  service: "gmail",
   auth: {
     user: process.env.MAIL_USER,
     pass: process.env.MAIL_PASS
+  },
+  tls: {
+    rejectUnauthorized: false
   }
 });
 
@@ -46,17 +53,20 @@ transporter.verify((error, success) => {
   }
 });
 
-// Generate OTP
+// ─────────────────────────────────────────────
+// Utility Functions
+// ─────────────────────────────────────────────
 function generateOtp() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-// Normalize email
 function normalizeEmail(email) {
   return String(email || "").trim().toLowerCase();
 }
 
+// ─────────────────────────────────────────────
 // Health Check
+// ─────────────────────────────────────────────
 app.get("/", (req, res) => {
   res.json({
     success: true,
@@ -64,8 +74,41 @@ app.get("/", (req, res) => {
   });
 });
 
+// ─────────────────────────────────────────────
+// TEST MAIL ROUTE
+// ─────────────────────────────────────────────
+app.get("/test-mail", async (req, res) => {
+
+  try {
+
+    await transporter.sendMail({
+      from: process.env.MAIL_USER,
+      to: process.env.MAIL_USER,
+      subject: "MediStore Test",
+      text: "Mail working successfully"
+    });
+
+    return res.json({
+      success: true,
+      message: "Mail sent successfully"
+    });
+
+  } catch (error) {
+
+    console.log("TEST MAIL ERROR:", error);
+
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// ─────────────────────────────────────────────
 // Send OTP
+// ─────────────────────────────────────────────
 async function sendOtpHandler(req, res) {
+
   try {
 
     const email = normalizeEmail(req.body.email);
@@ -147,16 +190,18 @@ async function sendOtpHandler(req, res) {
 
   } catch (error) {
 
-    console.error("SEND OTP ERROR:", error);
+    console.log("SEND OTP ERROR:", error);
 
     return res.status(500).json({
       success: false,
-      message: "Failed to send OTP"
+      message: error.message
     });
   }
 }
 
+// ─────────────────────────────────────────────
 // Verify OTP
+// ─────────────────────────────────────────────
 function verifyOtpHandler(req, res) {
 
   try {
@@ -202,6 +247,7 @@ function verifyOtpHandler(req, res) {
     }
 
     if (requestRole && record.role !== requestRole) {
+
       return res.status(400).json({
         success: false,
         message: "OTP role mismatch"
@@ -230,7 +276,7 @@ function verifyOtpHandler(req, res) {
 
   } catch (error) {
 
-    console.error("VERIFY OTP ERROR:", error);
+    console.log("VERIFY OTP ERROR:", error);
 
     return res.status(500).json({
       success: false,
@@ -239,14 +285,18 @@ function verifyOtpHandler(req, res) {
   }
 }
 
+// ─────────────────────────────────────────────
 // Routes
+// ─────────────────────────────────────────────
 app.post("/send-otp", otpLimiter, sendOtpHandler);
 app.post("/verify-otp", verifyOtpHandler);
 
 app.post("/auth/send-otp", otpLimiter, sendOtpHandler);
 app.post("/auth/verify-otp", verifyOtpHandler);
 
+// ─────────────────────────────────────────────
 // Start Server
+// ─────────────────────────────────────────────
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`MediStore OTP Backend running on port ${PORT}`);
 });
